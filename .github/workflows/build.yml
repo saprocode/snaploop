@@ -1,0 +1,132 @@
+name: SnapLoop — Build & Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Sürüm numarası (örn: 2.1.0)'
+        required: true
+        default: '2.1.0'
+
+jobs:
+
+  update-version:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Sürüm numarasını belirle
+        id: get_version
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
+          else
+            echo "VERSION=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: version.json güncelle
+        run: |
+          VERSION=${{ steps.get_version.outputs.VERSION }}
+          DATE=$(date +%Y-%m-%d)
+          printf '{\n  "version": "%s",\n  "release_date": "%s",\n  "notes": "Sürüm %s yayınlandı."\n}\n' "$VERSION" "$DATE" "$VERSION" > version.json
+          sed -i "s/CURRENT_VERSION   = \".*\"/CURRENT_VERSION   = \"${VERSION}\"/" updater.py
+          sed -i "s/VERSION = \".*\"/VERSION = \"${VERSION}\"/" snaploop.py
+
+      - name: Commit
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add version.json updater.py snaploop.py
+          git diff --staged --quiet || git commit -m "chore: v${{ steps.get_version.outputs.VERSION }} sürüm güncellemesi"
+          git push origin HEAD:main || true
+
+  build-windows:
+    needs: update-version
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install pyinstaller mss Pillow psutil
+      - run: python build.py
+      - uses: joncloud/makensis-action@v4
+        with:
+          script-file: installer_windows.nsi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SnapLoop-Windows
+          path: SnapLoop_Setup_*.exe
+
+  build-macos:
+    needs: update-version
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install pyinstaller mss Pillow psutil
+      - run: python build.py
+      - run: brew install create-dmg && bash create_dmg.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SnapLoop-macOS
+          path: "*.dmg"
+
+  build-linux:
+    needs: update-version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: sudo apt-get update && sudo apt-get install -y python3-tk wmctrl dpkg-dev
+      - run: pip install pyinstaller mss Pillow psutil
+      - run: python build.py
+      - run: bash create_deb.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SnapLoop-Linux
+          path: "*.deb"
+
+  release:
+    needs: [build-windows, build-macos, build-linux]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+      - name: Sürüm belirle
+        id: get_version
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
+          else
+            echo "VERSION=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+          fi
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.get_version.outputs.VERSION }}
+          name: SnapLoop v${{ steps.get_version.outputs.VERSION }}
+          files: |
+            SnapLoop-Windows/**
+            SnapLoop-macOS/**
+            SnapLoop-Linux/**
+          body: |
+            ## SnapLoop v${{ steps.get_version.outputs.VERSION }}
+            | Platform | Dosya |
+            |----------|-------|
+            | Windows | SnapLoop_Setup_*.exe |
+            | macOS   | SnapLoop_*.dmg |
+            | Linux   | SnapLoop_*_amd64.deb |
