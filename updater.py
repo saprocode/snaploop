@@ -18,7 +18,7 @@ from tkinter import ttk, messagebox
 
 # ── Sabitler ──────────────────────────────────────────────────────────────────
 CURRENT_VERSION   = "2.0.0"
-GITHUB_OWNER      = "KULLANICI_ADIN"   # ← GitHub kullanıcı adını yaz
+GITHUB_OWNER      = "saprocode"   # ← GitHub kullanıcı adını yaz
 GITHUB_REPO       = "snaploop"         # ← Repo adını yaz
 RELEASES_API_URL  = f"https://api.github.com/repos/{GITHUB_OWNER}/{GITHUB_REPO}/releases/latest"
 UPDATE_CHECK_URL  = f"https://raw.githubusercontent.com/{GITHUB_OWNER}/{GITHUB_REPO}/main/version.json"
