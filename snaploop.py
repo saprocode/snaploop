@@ -61,7 +61,7 @@ C = {
     "danger":    "#ef4444",
     "success":   "#10b981",
     "text":      "#e2e8f0",
-    "muted":     "#64748b",
+    "muted":     "#cbd5e1",
     "white":     "#ffffff",
 }
 
@@ -192,22 +192,81 @@ def capture_monitor(monitor_info, quality=90, fmt="PNG"):
 
 
 # ─── Stil Yardımcıları ────────────────────────────────────────────────────────
-def styled_btn(parent, text, cmd, color=None, width=None, height=32, font=None):
+class RoundedButton(tk.Canvas):
+    def __init__(self, parent, text, command, color, text_color, width, height, font_t):
+        super().__init__(parent, borderwidth=0, relief="flat", highlightthickness=0, bg=parent.cget('bg'))
+        self.command = command
+        self.color = color
+        self.hover_color = _lighten(color)
+        self.text_color = text_color
+        self.text_val = text
+        self.font = font_t
+        self.is_disabled = False
+
+        self.width_val = width if width else 150
+        self.height_val = height if height else 36
+        super().config(width=self.width_val, height=self.height_val)
+        
+        self.rect = self.create_polygon([0,0,0,0], fill=self.color, smooth=True)
+        self.text_item = self.create_text(0, 0, text=self.text_val, fill=self.text_color, font=self.font)
+
+        self.bind("<Configure>", self.on_resize)
+        self.bind("<ButtonPress-1>", self.on_press)
+        self.bind("<ButtonRelease-1>", self.on_release)
+        self.bind("<Enter>", self.on_enter)
+        self.bind("<Leave>", self.on_leave)
+
+    def config(self, **kwargs):
+        if 'text' in kwargs:
+            self.text_val = kwargs['text']
+            self.itemconfig(self.text_item, text=self.text_val)
+            del kwargs['text']
+        if 'state' in kwargs:
+            if kwargs['state'] == 'disabled':
+                self.is_disabled = True
+                self.itemconfig(self.rect, fill=C["surface2"])
+                self.itemconfig(self.text_item, fill=C["muted"])
+            else:
+                self.is_disabled = False
+                self.itemconfig(self.rect, fill=self.color)
+                self.itemconfig(self.text_item, fill=self.text_color)
+            del kwargs['state']
+        if kwargs:
+            super().config(**kwargs)
+            
+    def on_resize(self, event):
+        w, h = event.width, event.height
+        if w < 10 or h < 10: return
+        r = min(h // 2, 8)
+        points = [
+            r, 0, w-r, 0, w, 0, w, r,
+            w, h-r, w, h, w-r, h, r, h,
+            0, h, 0, h-r, 0, r, 0, 0
+        ]
+        self.coords(self.rect, points)
+        self.coords(self.text_item, w/2, h/2)
+        
+    def on_press(self, event):
+        if not self.is_disabled:
+            self.itemconfig(self.rect, fill=self.color)
+    def on_release(self, event):
+        if not self.is_disabled:
+            self.itemconfig(self.rect, fill=self.hover_color)
+            if self.command:
+                self.command()
+    def on_enter(self, event):
+        if not self.is_disabled:
+            self.itemconfig(self.rect, fill=self.hover_color)
+            self.config(cursor="hand2")
+    def on_leave(self, event):
+        if not self.is_disabled:
+            self.itemconfig(self.rect, fill=self.color)
+            self.config(cursor="")
+
+def styled_btn(parent, text, cmd, color=None, width=None, height=36, font=None):
     c = color or C["accent2"]
-    kw = dict(
-        text=text, command=cmd,
-        bg=c, fg=C["white"],
-        activebackground=c, activeforeground=C["white"],
-        relief="flat", cursor="hand2",
-        font=font or FONT_BOLD,
-        bd=0, highlightthickness=0,
-    )
-    if width:  kw["width"]  = width
-    if height: kw["height"] = height
-    b = tk.Button(parent, **kw)
-    b.bind("<Enter>", lambda e: b.config(bg=_lighten(c)))
-    b.bind("<Leave>", lambda e: b.config(bg=c))
-    return b
+    text_c = C["bg"] if c in [C["accent"], C["accent3"], C["success"]] else C["white"]
+    return RoundedButton(parent, text, cmd, c, text_c, width, height, font or FONT_BOLD)
 
 
 def _lighten(hex_color):
@@ -257,7 +316,7 @@ def section_header(parent, text):
 # ═══════════════════════════════════════════════════════════════════════════════
 class SnapLoop(tk.Tk):
 
-    VERSION = "2.0.0"
+    VERSION = "2.1.0"
     SAVE_DIR = Path.home() / "SnapLoop_Recordings"
 
     def __init__(self):
@@ -266,6 +325,17 @@ class SnapLoop(tk.Tk):
         self.geometry("900x760")
         self.minsize(860, 700)
         self.configure(bg=C["bg"])
+
+        # Set Icon
+        try:
+            base_dir = Path(getattr(sys, '_MEIPASS', Path(__file__).parent))
+            if sys.platform == "win32":
+                self.iconbitmap(str(base_dir / "assets" / "icon.ico"))
+            else:
+                img = tk.PhotoImage(file=str(base_dir / "assets" / "logo.png"))
+                self.iconphoto(True, img)
+        except Exception as e:
+            print("Icon loading error:", e)
 
         self.SAVE_DIR.mkdir(exist_ok=True)
 
@@ -337,13 +407,10 @@ class SnapLoop(tk.Tk):
 
         # Güncelleme kontrolü butonu
         if HAS_UPDATER:
-            upd_btn = tk.Button(
-                topbar, text="⟳ Güncelleme Kontrol Et",
-                command=lambda: run_update_check(self, silent=False),
-                bg=C["surface2"], fg=C["muted"],
-                activebackground=C["surface2"], activeforeground=C["accent"],
-                font=("Courier New", 8), relief="flat", cursor="hand2",
-                bd=0, padx=8, pady=4,
+            upd_btn = styled_btn(
+                topbar, "⟳ Güncellemeleri Denetle",
+                cmd=lambda: run_update_check(self, silent=False),
+                color=C["surface2"], width=220, height=30, font=("Courier New", 9, "bold")
             )
             upd_btn.pack(side="right", padx=(0, 10))
 
@@ -355,8 +422,8 @@ class SnapLoop(tk.Tk):
         style.theme_use("default")
         style.configure("Custom.TNotebook", background=C["bg"], borderwidth=0, tabmargins=0)
         style.configure("Custom.TNotebook.Tab",
-                        background=C["surface"], foreground=C["muted"],
-                        padding=[16,8], borderwidth=0, font=("Courier New", 9, "bold"))
+                        background=C["surface"], foreground=C["text"],
+                        padding=[16,8], borderwidth=0, font=("Courier New", 10, "bold"))
         style.map("Custom.TNotebook.Tab",
                   background=[("selected", C["surface2"])],
                   foreground=[("selected", C["accent"])])
@@ -380,161 +447,138 @@ class SnapLoop(tk.Tk):
     # ══════════════════════════════ KAYIT TABÜ ════════════════════════════════
     def _build_record_tab(self):
         p = self._tab_record
-        # Two columns
-        left  = tk.Frame(p, bg=C["bg"])
-        right = tk.Frame(p, bg=C["bg"])
-        left.pack(side="left", fill="both", expand=True, padx=(0,8), pady=8)
-        right.pack(side="left", fill="both", expand=True, padx=(8,0), pady=8)
 
-        # ── LEFT: Hedef Seçimi ──────────────────────────────────────────────
+        # ── 1. KONTROL PANELİ (Daha Düzenli Bir Bottom Bar) ─────────────────────
+        ctrl = tk.Frame(p, bg=C["surface2"], bd=1, relief="flat", highlightbackground=C["border"], highlightthickness=1)
+        ctrl.pack(side="bottom", fill="x", pady=(15, 0))
+        
+        ctrl_inner = tk.Frame(ctrl, bg=C["surface2"], padx=25, pady=16)
+        ctrl_inner.pack(fill="both")
+
+        info_f = tk.Frame(ctrl_inner, bg=C["surface2"])
+        info_f.pack(side="left", fill="y")
+        self.timer_lbl = tk.Label(info_f, text="00:00:00", bg=C["surface2"],
+                                  fg=C["accent"], font=("Courier New", 28, "bold"))
+        self.timer_lbl.pack(anchor="w")
+        
+        stats_f = tk.Frame(info_f, bg=C["surface2"])
+        stats_f.pack(anchor="w")
+        self.frame_lbl = tk.Label(stats_f, text="0 kare", bg=C["surface2"],
+                                  fg=C["text"], font=FONT_MONO)
+        self.frame_lbl.pack(side="left")
+        self.fps_lbl = tk.Label(stats_f, text="—", bg=C["surface2"],
+                                fg=C["muted"], font=FONT_MONO)
+        self.fps_lbl.pack(side="left", padx=(8,0))
+
+        btn_f = tk.Frame(ctrl_inner, bg=C["surface2"])
+        btn_f.pack(side="right", fill="y", pady=(2,0))
+        
+        self.btn_start = styled_btn(btn_f, "▶  BAŞLAT",
+                                    self._start_recording, color=C["success"], width=130, height=44, font=("Courier New", 12, "bold"))
+        self.btn_start.pack(side="left", padx=(0,10))
+
+        self.btn_pause = styled_btn(btn_f, "⏸  DURAKLAT",
+                                    self._pause_recording, color=C["accent3"], width=130, height=44, font=("Courier New", 12, "bold"))
+        self.btn_pause.pack(side="left", padx=(0,10))
+        self.btn_pause.config(state="disabled")
+
+        self.btn_stop = styled_btn(btn_f, "⏹  DURDUR",
+                                   self._stop_recording, color=C["danger"], width=130, height=44, font=("Courier New", 12, "bold"))
+        self.btn_stop.pack(side="left")
+        self.btn_stop.config(state="disabled")
+
+        # ── 2. ANA İÇERİK KARTLARI ───────────────────────────────────────────
+        content = tk.Frame(p, bg=C["bg"])
+        content.pack(side="top", fill="both", expand=True)
+        
+        left = tk.Frame(content, bg=C["bg"])
+        right = tk.Frame(content, bg=C["bg"])
+        left.pack(side="left", fill="both", expand=True, padx=(0,8), pady=(8,0))
+        right.pack(side="left", fill="both", expand=True, padx=(8,0), pady=(8,0))
+
+        # -- SOL: HEDEF SEÇİMİ --
         target_card = self._card(left, "HEDEF EKRAN / PENCERE")
-        target_card.pack(fill="x", pady=(0,12))
+        target_card.pack(fill="both", expand=True, pady=(0,12))
 
-        # Target type
         type_f = tk.Frame(target_card, bg=C["surface"])
         type_f.pack(fill="x", pady=(0,10))
-
         for val, lbl in [("all","Tüm Ekranlar"), ("monitor","Ekran Seç"), ("window","Pencere Seç")]:
             rb = tk.Radiobutton(type_f, text=lbl, variable=self.var_target_type, value=val,
-                                bg=C["surface"], fg=C["text"],
-                                selectcolor=C["surface2"], activebackground=C["surface"],
-                                activeforeground=C["accent"], font=FONT_MAIN,
-                                command=self._on_target_type_change)
+                                bg=C["surface"], fg=C["accent"], selectcolor=C["surface2"],
+                                activebackground=C["surface"], activeforeground=C["white"], font=FONT_MONO,
+                                command=self._on_target_type_change, cursor="hand2")
             rb.pack(side="left", padx=(0,16))
 
-        # Monitor listesi
         self.monitor_frame = tk.Frame(target_card, bg=C["surface"])
         self.monitor_frame.pack(fill="x")
-
-        # Window listesi
         self.window_frame = tk.Frame(target_card, bg=C["surface"])
-
+        
         refresh_btn = styled_btn(target_card, "↻  Hedefleri Yenile", self._refresh_targets,
-                                 color=C["muted"], height=26)
-        refresh_btn.pack(anchor="e", pady=(8,0))
+                                 color=C["surface2"], width=180, height=30, font=FONT_MONO)
+        refresh_btn.pack(side="bottom", anchor="e", pady=(8,0))
 
-        # ── LEFT: Zamanlama ─────────────────────────────────────────────────
-        timing_card = self._card(left, "ZAMANLAMA")
-        timing_card.pack(fill="x", pady=(0,12))
-
-        row1 = tk.Frame(timing_card, bg=C["surface"])
-        row1.pack(fill="x")
-
-        tk.Label(row1, text="Aralık (saniye):", bg=C["surface"], fg=C["muted"],
-                 font=("Courier New",9)).grid(row=0,column=0,sticky="w",pady=3)
-        iv = styled_entry(row1, textvariable=self.var_interval, width=8)
-        iv.grid(row=0, column=1, sticky="w", padx=(8,0))
-
-        # Duration toggle + entry
-        dur_row = tk.Frame(timing_card, bg=C["surface"])
-        dur_row.pack(fill="x", pady=(4,0))
-        self._chk(dur_row, "Süre Limiti (sn):", self.var_duration_en).pack(side="left")
-        de = styled_entry(dur_row, textvariable=self.var_duration, width=8)
-        de.pack(side="left", padx=8)
-
-        # ── RIGHT: Kalite & Format ──────────────────────────────────────────
-        quality_card = self._card(right, "KALİTE & FORMAT")
+        # -- SAĞ: KALİTE & FORMAT --
+        quality_card = self._card(right, "KAYIT BİÇİMİ VE KALİTE")
         quality_card.pack(fill="x", pady=(0,12))
 
-        # Format seçimi
-        tk.Label(quality_card, text="Format:", bg=C["surface"], fg=C["muted"],
-                 font=("Courier New",9)).pack(anchor="w")
         fmt_f = tk.Frame(quality_card, bg=C["surface"])
         fmt_f.pack(fill="x", pady=(4,10))
+        tk.Label(fmt_f, text="Format:", bg=C["surface"], fg=C["muted"], font=FONT_MONO).pack(side="left", padx=(0,8))
         for fmt in ["PNG","JPEG","WEBP"]:
             rb = tk.Radiobutton(fmt_f, text=fmt, variable=self.var_format, value=fmt,
-                                bg=C["surface"], fg=C["text"],
-                                selectcolor=C["surface2"], activebackground=C["surface"],
-                                activeforeground=C["accent"], font=FONT_MAIN)
+                                bg=C["surface"], fg=C["accent"], selectcolor=C["surface2"],
+                                activebackground=C["surface"], activeforeground=C["white"], font=FONT_MONO, cursor="hand2")
             rb.pack(side="left", padx=(0,12))
 
-        # Quality slider
-        tk.Label(quality_card, text="Kalite:", bg=C["surface"], fg=C["muted"],
-                 font=("Courier New",9)).pack(anchor="w")
         q_row = tk.Frame(quality_card, bg=C["surface"])
         q_row.pack(fill="x", pady=(4,0))
-        self.quality_val_lbl = tk.Label(q_row, text="85%", bg=C["surface"],
-                                        fg=C["accent"], font=("Courier New",16,"bold"), width=5)
-        self.quality_val_lbl.pack(side="left")
-        slider_bg = tk.Frame(q_row, bg=C["surface2"], height=8, bd=0)
-        slider_bg.pack(side="left", fill="x", expand=True, padx=(8,0), ipady=0)
+        tk.Label(q_row, text="Kalite:", bg=C["surface"], fg=C["muted"], font=FONT_MONO).pack(side="left", padx=(0,8))
         self.quality_slider = tk.Scale(
             q_row, variable=self.var_quality, from_=10, to=100,
             orient="horizontal", showvalue=False,
             bg=C["surface"], fg=C["accent"], troughcolor=C["surface2"],
             activebackground=C["accent"], highlightthickness=0, bd=0,
-            command=self._on_quality_change, length=200,
+            command=self._on_quality_change, length=120,
         )
         self.quality_slider.pack(side="left", fill="x", expand=True)
+        self.quality_val_lbl = tk.Label(q_row, text="85%", bg=C["surface"],
+                                        fg=C["text"], font=("Courier New",12,"bold"), width=5)
+        self.quality_val_lbl.pack(side="left", padx=(8,0))
 
-        # Kalite ipucu
-        self.quality_hint = tk.Label(quality_card, text="Denge: Hız/Boyut", bg=C["surface"],
-                                     fg=C["muted"], font=("Courier New",8))
-        self.quality_hint.pack(anchor="e")
+        # -- SAĞ: ZAMANLAMA --
+        timing_card = self._card(right, "ZAMANLAMA LİMİTLERİ")
+        timing_card.pack(fill="x", pady=(0,12))
+        
+        row1 = tk.Frame(timing_card, bg=C["surface"])
+        row1.pack(fill="x")
+        tk.Label(row1, text="Kare Aralığı (sn):", bg=C["surface"], fg=C["muted"], font=FONT_MONO).grid(row=0,column=0,sticky="w",pady=3)
+        styled_entry(row1, textvariable=self.var_interval, width=8).grid(row=0, column=1, sticky="w", padx=(8,0))
 
-        # ── RIGHT: Boyut Limiti ─────────────────────────────────────────────
-        limit_card = self._card(right, "BOYUT LİMİTİ")
+        dur_row = tk.Frame(timing_card, bg=C["surface"])
+        dur_row.pack(fill="x", pady=(4,0))
+        self._chk(dur_row, "Otomatik Durdur (sn):", self.var_duration_en).pack(side="left")
+        styled_entry(dur_row, textvariable=self.var_duration, width=8).pack(side="left", padx=(8,0))
+
+        # -- SAĞ: KOTA --
+        limit_card = self._card(right, "BOYUT LİMİTİ (KOTA)")
         limit_card.pack(fill="x", pady=(0,12))
-
+        
         lim_row = tk.Frame(limit_card, bg=C["surface"])
         lim_row.pack(fill="x")
-        self._chk(lim_row, "Limit Aktif:", self.var_limit_en).pack(side="left")
-        le = styled_entry(lim_row, textvariable=self.var_size_limit, width=8)
-        le.pack(side="left", padx=8)
-        tk.Label(lim_row, text="MB", bg=C["surface"], fg=C["muted"],
-                 font=("Courier New",9)).pack(side="left")
+        self._chk(lim_row, "Kotayı Aktif Et (MB):", self.var_limit_en).pack(side="left")
+        styled_entry(lim_row, textvariable=self.var_size_limit, width=8).pack(side="left", padx=(8,0))
 
-        # Progress bar for size
         self.size_bar_frame = tk.Frame(limit_card, bg=C["surface"])
-        self.size_bar_frame.pack(fill="x", pady=(8,0))
-        tk.Label(self.size_bar_frame, text="Kullanılan:", bg=C["surface"],
+        self.size_bar_frame.pack(fill="x", pady=(12,0))
+        tk.Label(self.size_bar_frame, text="Kullanılan Alan:", bg=C["surface"],
                  fg=C["muted"], font=("Courier New",8)).pack(anchor="w")
         bar_bg = tk.Frame(self.size_bar_frame, bg=C["border"], height=6)
-        bar_bg.pack(fill="x", pady=(2,2))
-        self.size_bar = tk.Frame(bar_bg, bg=C["success"], height=6)
+        bar_bg.pack(fill="x", pady=(4,2))
+        self.size_bar = tk.Frame(bar_bg, bg=C["accent"], height=6)
         self.size_bar.place(x=0, y=0, relheight=1, relwidth=0)
         self.size_lbl = tk.Label(self.size_bar_frame, text="0.0 / 500.0 MB",
                                  bg=C["surface"], fg=C["muted"], font=("Courier New",8))
         self.size_lbl.pack(anchor="e")
-
-        # ── BOTTOM: Kontrol paneli ──────────────────────────────────────────
-        ctrl = tk.Frame(p, bg=C["bg"])
-        ctrl.pack(side="bottom", fill="x", padx=0, pady=(0,12))
-
-        # Timer + frame counter
-        info_f = tk.Frame(ctrl, bg=C["surface2"], padx=16, pady=10)
-        info_f.pack(fill="x", padx=0, pady=(0,10))
-
-        self.timer_lbl = tk.Label(info_f, text="00:00:00", bg=C["surface2"],
-                                  fg=C["accent"], font=("Courier New",26,"bold"))
-        self.timer_lbl.pack(side="left")
-
-        stats_f = tk.Frame(info_f, bg=C["surface2"])
-        stats_f.pack(side="left", padx=24)
-        self.frame_lbl = tk.Label(stats_f, text="0 kare", bg=C["surface2"],
-                                  fg=C["text"], font=("Courier New",10))
-        self.frame_lbl.pack(anchor="w")
-        self.fps_lbl = tk.Label(stats_f, text="—", bg=C["surface2"],
-                                fg=C["muted"], font=("Courier New",9))
-        self.fps_lbl.pack(anchor="w")
-
-        # Buttons
-        btn_f = tk.Frame(ctrl, bg=C["bg"])
-        btn_f.pack(fill="x")
-
-        self.btn_start = styled_btn(btn_f, "▶  KAYDI BAŞLAT",
-                                    self._start_recording, color=C["success"], height=40)
-        self.btn_start.pack(side="left", fill="x", expand=True, padx=(0,6))
-
-        self.btn_pause = styled_btn(btn_f, "⏸  DURAKLAT",
-                                    self._pause_recording, color=C["accent3"], height=40)
-        self.btn_pause.pack(side="left", fill="x", expand=True, padx=(0,6))
-        self.btn_pause.config(state="disabled")
-
-        self.btn_stop = styled_btn(btn_f, "⏹  DURDUR",
-                                   self._stop_recording, color=C["danger"], height=40)
-        self.btn_stop.pack(side="left", fill="x", expand=True)
-        self.btn_stop.config(state="disabled")
 
     # ══════════════════════════ KAYITLAR TABÜ ═════════════════════════════════
     def _build_sessions_tab(self):
@@ -647,7 +691,7 @@ class SnapLoop(tk.Tk):
             selectcolor=C["surface2"],
             activebackground=parent.cget("bg"),
             activeforeground=C["accent"],
-            font=FONT_MAIN,
+            font=FONT_MONO,
         )
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -682,12 +726,12 @@ class SnapLoop(tk.Tk):
                         selectcolor=C["surface2"],
                         activebackground=C["surface"],
                         activeforeground=C["accent"],
-                        font=FONT_MAIN,
+                        font=("Courier New", 8, "bold"),
                     )
                     cb.pack(anchor="w", pady=2)
         else:
             tk.Label(self.monitor_frame, text="mss kütüphanesi bulunamadı!",
-                     bg=C["surface"], fg=C["danger"], font=FONT_MAIN).pack()
+                     bg=C["surface"], fg=C["danger"], font=("Courier New", 8, "bold")).pack()
 
         # Pencereler
         for w in self.window_frame.winfo_children():
@@ -696,10 +740,10 @@ class SnapLoop(tk.Tk):
 
         if self.windows_list:
             tk.Label(self.window_frame, text="Pencere Seç:", bg=C["surface"],
-                     fg=C["muted"], font=("Courier New",9)).pack(anchor="w", pady=(0,4))
+                     fg=C["muted"], font=("Courier New", 8, "bold")).pack(anchor="w", pady=(0,4))
             win_titles = [w["title"][:70] for w in self.windows_list]
             combo = ttk.Combobox(self.window_frame, textvariable=self.window_var,
-                                 values=win_titles, font=("Courier New",10),
+                                 values=win_titles, font=("Courier New", 8, "bold"),
                                  state="readonly", width=50)
             combo.pack(fill="x")
             if win_titles:
@@ -708,7 +752,7 @@ class SnapLoop(tk.Tk):
         else:
             tk.Label(self.window_frame,
                      text="Pencere listesi alınamadı.\n(wmctrl yüklü değil veya desteklenmiyor)",
-                     bg=C["surface"], fg=C["danger"], font=FONT_MAIN).pack()
+                     bg=C["surface"], fg=C["danger"], font=("Courier New", 8, "bold")).pack()
 
         self._on_target_type_change()
 
@@ -1017,18 +1061,25 @@ class SnapLoop(tk.Tk):
 
                 self.after(0, lambda: messagebox.showinfo("Gönderildi", f"Mail başarıyla gönderildi!\nAlıcı: {to}"))
             except Exception as e:
-                self.after(0, lambda: messagebox.showerror("Mail Hatası", str(e)))
+                err_msg = str(e)
+                self.after(0, lambda m=err_msg: messagebox.showerror("Mail Hatası", m))
 
         self._update_status("GÖNDERILIYOR…", C["accent3"])
         threading.Thread(target=send, daemon=True).start()
 
     # ─────────────────────────────────────────────────────────────────────────
     def _save_mail_settings(self):
+        try:
+            port_val = int(self.var_smtp_port.get())
+        except (ValueError, _tkinter.TclError, TypeError):
+            port_val = 587
+            self.var_smtp_port.set(587)
+            
         cfg = {
             "mail_from":  self.var_mail_from.get(),
             "mail_to":    self.var_mail_to.get(),
             "smtp_host":  self.var_smtp_host.get(),
-            "smtp_port":  self.var_smtp_port.get(),
+            "smtp_port":  port_val,
         }
         cfg_path = self.SAVE_DIR / "mail_config.json"
         with open(cfg_path, "w") as f:

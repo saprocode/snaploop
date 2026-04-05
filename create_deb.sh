@@ -3,7 +3,7 @@
 # Ubuntu/Debian için
 
 APP_NAME="snaploop"
-VERSION="2.0.0"
+VERSION="2.1.0"
 ARCH="amd64"
 PKG_DIR="pkg_${APP_NAME}_${VERSION}"
 

@@ -7,7 +7,7 @@ from pathlib import Path
 
 APP_NAME    = "SnapLoop"
 MAIN_SCRIPT = "snaploop.py"
-VERSION     = "2.0.0"
+VERSION     = "2.1.0"
 
 def run(cmd):
     print("\n> " + cmd + "\n")
@@ -71,15 +71,18 @@ def build():
 
     if Path("updater.py").exists():
         args.append("--add-data=updater.py" + os.pathsep + ".")
+        
+    if Path("assets").exists():
+        args.append("--add-data=assets" + os.pathsep + "assets")
 
     if platform == "win32":
-        if Path("icon.ico").exists():
-            args.append("--icon=icon.ico")
+        if Path("assets/icon.ico").exists():
+            args.append("--icon=assets/icon.ico")
         create_version_info()
         args.append("--version-file=version_info.txt")
     elif platform == "darwin":
-        if Path("icon.icns").exists():
-            args.append("--icon=icon.icns")
+        if Path("assets/icon.icns").exists():
+            args.append("--icon=assets/icon.icns")
         args.append("--osx-bundle-identifier=com.snaploop.app")
 
     cmd = sys.executable + " -m PyInstaller " + " ".join(args) + " " + MAIN_SCRIPT

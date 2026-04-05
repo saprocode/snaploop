@@ -3,7 +3,7 @@
 # Gereksinim: create-dmg  →  brew install create-dmg
 
 APP_NAME="SnapLoop"
-VERSION="2.0.0"
+VERSION="2.1.0"
 APP_PATH="dist/SnapLoop.app"
 DMG_NAME="SnapLoop_${VERSION}.dmg"
 
@@ -18,7 +18,7 @@ fi
 # DMG oluştur
 create-dmg \
   --volname "${APP_NAME}" \
-  --volicon "icon.icns" \
+  --volicon "assets/icon.icns" \
   --window-pos 200 120 \
   --window-size 600 400 \
   --icon-size 100 \

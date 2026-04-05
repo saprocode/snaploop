@@ -3,7 +3,7 @@
 ; Gereksinim: https://nsis.sourceforge.io
 
 !define APP_NAME     "SnapLoop"
-!define APP_VERSION  "2.0.0"
+!define APP_VERSION  "2.1.0"
 !define APP_EXE      "SnapLoop.exe"
 !define INSTALL_DIR  "$PROGRAMFILES64\SnapLoop"
 
@@ -13,6 +13,9 @@ InstallDir "${INSTALL_DIR}"
 InstallDirRegKey HKLM "Software\SnapLoop" "Install_Dir"
 RequestExecutionLevel admin
 SetCompressor lzma
+
+Icon "assets\icon.ico"
+UninstallIcon "assets\icon.ico"
 
 ; Modern UI
 !include "MUI2.nsh"
